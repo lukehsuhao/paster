@@ -1,0 +1,22 @@
+.DS_Store
+/.build
+/Packages
+/*.xcodeproj
+xcuserdata/
+DerivedData/
+.swiftpm/config/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Build output (binary)
+ClipStash.app/Contents/MacOS/ClipStash
+
+# Old Python version
+venv/
+__pycache__/
+*.pyc
+clipboard_history.py
+clipboard_history.db
+start.sh
+com.luke.clipboard-history.plist
+/ClipStash
