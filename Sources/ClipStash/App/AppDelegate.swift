@@ -17,6 +17,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         HotkeyManager.shared.register()
 
+        // 啟動後延遲檢查更新
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            UpdateManager.shared.checkOnLaunchIfNeeded()
+        }
+
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             return self.handleLocalKeyEvent(event)
         }

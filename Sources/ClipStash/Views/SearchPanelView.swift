@@ -618,6 +618,9 @@ struct SettingsTabView: View {
                     }
                 }
 
+                // 更新
+                UpdateSectionView()
+
                 // 關於
                 settingsSection(title: "關於", icon: "info.circle") {
                     HStack {
@@ -924,6 +927,89 @@ struct SearchBarView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Update Section
+
+struct UpdateSectionView: View {
+    @ObservedObject private var updater = UpdateManager.shared
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 14))
+                    .foregroundColor(.accentColor)
+                Text("軟體更新")
+                    .font(.system(size: 15, weight: .semibold))
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                if updater.updateAvailable {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "exclamationmark.circle.fill")
+                                    .foregroundColor(.orange)
+                                Text("有新版本 v\(updater.latestVersion) 可用")
+                                    .font(.system(size: 13, weight: .medium))
+                            }
+                            if !updater.releaseNotes.isEmpty {
+                                Text(updater.releaseNotes)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .lineLimit(3)
+                            }
+                        }
+                        Spacer()
+                        if updater.isDownloading {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Button("下載更新") {
+                                updater.downloadAndInstall()
+                            }
+                            .font(.system(size: 12))
+                        }
+                    }
+                } else {
+                    HStack {
+                        Text(updater.isChecking ? "正在檢查更新…" : "目前是最新版本")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                        if updater.isChecking {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                        } else {
+                            Button("檢查更新") {
+                                updater.checkForUpdate()
+                            }
+                            .font(.system(size: 12))
+                        }
+                    }
+                }
+
+                if let error = updater.errorMessage {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundColor(.red)
+                }
+
+                if let date = updater.lastCheckDate {
+                    let formatter = DateFormatter()
+                    let _ = formatter.dateFormat = "yyyy/MM/dd HH:mm"
+                    Text("上次檢查：\(formatter.string(from: date))")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor))
+            .cornerRadius(8)
+        }
     }
 }
 

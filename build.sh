@@ -24,6 +24,7 @@ swiftc \
   Sources/ClipStash/Core/HotkeyManager.swift \
   Sources/ClipStash/Core/PasteService.swift \
   Sources/ClipStash/Core/SettingsManager.swift \
+  Sources/ClipStash/Core/UpdateManager.swift \
   Sources/ClipStash/Views/SearchViewModel.swift \
   Sources/ClipStash/Views/SearchPanelView.swift \
   Sources/ClipStash/Views/SearchPanelController.swift \
