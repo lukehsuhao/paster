@@ -34,10 +34,8 @@ git clone https://github.com/lukehsuhao/paster.git
 cd paster
 chmod +x build.sh
 ./build.sh
-open ClipStash.app
+open Paster.app
 ```
-
-> 注意：編譯產出的 .app 目錄名稱仍為 `ClipStash.app`，但視窗標題和功能名稱已改為 Paster。
 
 ## 使用
 

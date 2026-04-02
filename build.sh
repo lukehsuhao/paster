@@ -1,9 +1,11 @@
 #!/bin/bash
-# Build ClipStash.app
+# Build Paster.app
 set -e
 
 SDK=$(xcrun --sdk macosx --show-sdk-path)
-APP_DIR="ClipStash.app/Contents"
+APP_DIR="Paster.app/Contents"
+
+mkdir -p "$APP_DIR/MacOS" "$APP_DIR/Resources"
 
 echo "🔨 Compiling..."
 swiftc \
@@ -15,7 +17,7 @@ swiftc \
   -framework SwiftUI \
   -framework Carbon \
   -O \
-  -o "$APP_DIR/MacOS/ClipStash" \
+  -o "$APP_DIR/MacOS/Paster" \
   Sources/ClipStash/Models/ClipItem.swift \
   Sources/ClipStash/Core/DatabaseManager.swift \
   Sources/ClipStash/Core/ClipboardMonitor.swift \
@@ -29,5 +31,5 @@ swiftc \
   Sources/ClipStash/App/AppDelegate.swift \
   Sources/ClipStash/App/ClipStashApp.swift
 
-echo "✅ Built: ClipStash.app"
-echo "   Run: open ClipStash.app"
+echo "✅ Built: Paster.app"
+echo "   Run: open Paster.app"

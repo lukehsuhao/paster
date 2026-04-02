@@ -9,7 +9,7 @@ DerivedData/
 .netrc
 
 # Build output (binary)
-ClipStash.app/Contents/MacOS/ClipStash
+Paster.app/Contents/MacOS/Paster
 
 # Old Python version
 venv/
