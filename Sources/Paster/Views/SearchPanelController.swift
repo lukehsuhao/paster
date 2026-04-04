@@ -12,15 +12,22 @@ final class SearchPanelController {
     private init() {}
 
     var isVisible: Bool {
-        window?.isVisible ?? false
+        guard let window = window else { return false }
+        return window.isVisible && window.isKeyWindow
     }
 
     func toggle() {
         if isVisible {
             hide()
         } else {
+            viewModel.currentTab = .history
             show()
         }
+    }
+
+    func showPinned() {
+        viewModel.currentTab = .pinned
+        show()
     }
 
     func show() {
@@ -75,7 +82,7 @@ final class SearchPanelController {
         win.hasShadow = true
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 650, height: 420)
-        win.setFrameAutosaveName("ClipStashWindow")
+        win.setFrameAutosaveName("PasterWindow")
         win.level = .normal
 
         let hosting = NSHostingView(rootView: contentView)

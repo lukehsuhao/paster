@@ -15,6 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             PasteService.shared.capturePreviousApp()
             SearchPanelController.shared.toggle()
         }
+        HotkeyManager.shared.onPinnedHotkey = {
+            PasteService.shared.capturePreviousApp()
+            SearchPanelController.shared.showPinned()
+        }
         HotkeyManager.shared.register()
 
         // 首次啟動顯示權限引導
@@ -90,8 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 設定分頁不需要鍵盤導航
         if vm.currentTab == .settings { return event }
 
-        if event.keyCode == 126 { vm.moveUp(); return nil }
-        if event.keyCode == 125 { vm.moveDown(); return nil }
+        if event.keyCode == 126 { vm.moveUp(); return nil }    // ↑
+        if event.keyCode == 125 { vm.moveDown(); return nil }  // ↓
+        if event.keyCode == 123 { vm.moveLeft(); return nil }  // ←
+        if event.keyCode == 124 { vm.moveRight(); return nil } // →
 
         // Enter — 輸入法選字中不攔截
         if event.keyCode == 36 {

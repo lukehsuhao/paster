@@ -10,7 +10,7 @@ final class DatabaseManager {
 
     private init() {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dbDir = appSupport.appendingPathComponent("ClipStash", isDirectory: true)
+        let dbDir = appSupport.appendingPathComponent("Paster", isDirectory: true)
         try? FileManager.default.createDirectory(at: dbDir, withIntermediateDirectories: true)
         let dbPath = dbDir.appendingPathComponent("clipstash.sqlite").path
 
@@ -203,7 +203,7 @@ final class DatabaseManager {
 
     /// 帶篩選條件的查詢
     func filtered(keyword: String, contentType: ClipContentType?, sourceApp: String?, limit: Int = 100) -> [ClipItem] {
-        var conditions: [String] = []
+        var conditions: [String] = ["c.isPinned = 0"]
         if !keyword.isEmpty {
             conditions.append("c.textContent LIKE '%\(keyword.replacingOccurrences(of: "'", with: "''"))%'")
         }
@@ -213,12 +213,12 @@ final class DatabaseManager {
         if let app = sourceApp {
             conditions.append("c.sourceAppName = '\(app.replacingOccurrences(of: "'", with: "''"))'")
         }
-        let whereClause = conditions.isEmpty ? "" : "WHERE " + conditions.joined(separator: " AND ")
+        let whereClause = "WHERE " + conditions.joined(separator: " AND ")
         let sql = """
             SELECT c.*, cat.name as catName FROM clips c
             LEFT JOIN categories cat ON c.categoryId = cat.id
             \(whereClause)
-            ORDER BY c.isPinned DESC, c.id DESC LIMIT \(limit)
+            ORDER BY c.id DESC LIMIT \(limit)
         """
         return queryClips(sql: sql, bind: { _ in })
     }

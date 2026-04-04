@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ShortcutRecorder
 
 // MARK: - Main Panel View
 
@@ -207,12 +208,14 @@ struct HistoryTabView: View {
                     CardGridView(
                         items: viewModel.items,
                         selectedIndex: viewModel.selectedIndex,
+                        scrollToSelection: $viewModel.scrollToSelection,
                         onSelect: { index in viewModel.selectIndex(index) },
                         onPaste: { index in viewModel.pasteAtIndex(index, onDismiss: onDismiss) },
                         onTogglePin: { item in viewModel.togglePin(item: item) },
                         onDelete: { item in viewModel.deleteItem(item: item) },
                         categories: viewModel.categories,
-                        onSetCategory: { item, catId in viewModel.setCategory(item: item, categoryId: catId) }
+                        onSetCategory: { item, catId in viewModel.setCategory(item: item, categoryId: catId) },
+                        onColumnsChanged: { cols in viewModel.gridColumns = cols }
                     )
                     .frame(width: geo.size.width * 0.58)
 
@@ -232,12 +235,18 @@ struct HistoryTabView: View {
 struct CardGridView: View {
     let items: [ClipItem]
     let selectedIndex: Int
+    @Binding var scrollToSelection: Bool
     let onSelect: (Int) -> Void
     let onPaste: (Int) -> Void
     let onTogglePin: (ClipItem) -> Void
     let onDelete: (ClipItem) -> Void
     let categories: [ClipCategory]
     let onSetCategory: (ClipItem, Int64?) -> Void
+    var onColumnsChanged: ((Int) -> Void)? = nil
+
+    private let minCardWidth: CGFloat = 170
+    private let cardSpacing: CGFloat = 10
+    private let gridPadding: CGFloat = 12
 
     private let columns = [
         GridItem(.adaptive(minimum: 170, maximum: 250), spacing: 10)
@@ -275,16 +284,30 @@ struct CardGridView: View {
                         }
                     }
                 }
-                .padding(12)
+                .padding(gridPadding)
             }
+            .background(GeometryReader { geo in
+                Color.clear.onAppear {
+                    updateColumns(width: geo.size.width)
+                }.onChange(of: geo.size.width) { w in
+                    updateColumns(width: w)
+                }
+            })
             .onChange(of: selectedIndex) { newIndex in
-                if newIndex < items.count {
+                if scrollToSelection && newIndex < items.count {
                     withAnimation(.easeInOut(duration: 0.12)) {
                         proxy.scrollTo(items[newIndex].id, anchor: .center)
                     }
+                    scrollToSelection = false
                 }
             }
         }
+    }
+
+    private func updateColumns(width: CGFloat) {
+        let usable = width - gridPadding * 2
+        let cols = max(1, Int((usable + cardSpacing) / (minCardWidth + cardSpacing)))
+        onColumnsChanged?(cols)
     }
 }
 
@@ -515,11 +538,12 @@ struct SettingsTabView: View {
                 // 快捷鍵
                 settingsSection(title: "快捷鍵", icon: "keyboard") {
                     settingsRow(label: "開啟 Paster") {
-                        HotkeyRecorderView(
-                            displayString: $viewModel.hotkeyDisplay,
-                            isRecording: $viewModel.isRecordingHotkey,
-                            onRecord: { event in viewModel.recordHotkey(event: event) }
-                        )
+                        ShortcutRecorderView(defaultsKey: HotkeyManager.defaultsKey)
+                            .frame(width: 160, height: 25)
+                    }
+                    settingsRow(label: "開啟釘選") {
+                        ShortcutRecorderView(defaultsKey: HotkeyManager.pinnedDefaultsKey)
+                            .frame(width: 160, height: 25)
                     }
                     settingsRow(label: "快速貼上 (第 1~9 項)") {
                         Text("⌘1 ~ ⌘9")
@@ -668,60 +692,106 @@ struct SettingsTabView: View {
     }
 }
 
-// MARK: - Hotkey Recorder
+// MARK: - Shortcut Recorder (ShortcutRecorder 框架)
 
-struct HotkeyRecorderView: View {
-    @Binding var displayString: String
-    @Binding var isRecording: Bool
-    var onRecord: (NSEvent) -> Void
+/// 簡易快捷鍵顯示與錄製元件（取代 RecorderControl，避免 xcassets 未編譯的 crash）
+final class ShortcutRecorderState: ObservableObject {
+    @Published var isRecording = false
+    @Published var displayText = ""
+    private var monitor: Any?
+    var defaultsKey: String = HotkeyManager.defaultsKey
+
+    func startRecording() {
+        isRecording = true
+        HotkeyManager.shared.suspended = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self = self else { return event }
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            if event.keyCode == 53 { self.stopRecording(); return nil }
+            guard !flags.intersection([.command, .control, .option]).isEmpty else { return event }
+
+            let shortcut = ShortcutRecorder.Shortcut(
+                code: KeyCode(rawValue: event.keyCode) ?? .ansiV,
+                modifierFlags: flags,
+                characters: event.charactersIgnoringModifiers,
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers
+            )
+            self.saveShortcut(shortcut)
+            self.stopRecording()
+            return nil
+        }
+    }
+
+    func stopRecording() {
+        if let monitor = monitor {
+            NSEvent.removeMonitor(monitor)
+            self.monitor = nil
+        }
+        isRecording = false
+        HotkeyManager.shared.suspended = false
+    }
+
+    func loadCurrentShortcut() {
+        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
+              let shortcut = try? NSKeyedUnarchiver.unarchivedObject(
+                  ofClass: ShortcutRecorder.Shortcut.self, from: data) else {
+            displayText = "未設定"
+            return
+        }
+        displayText = Self.shortcutToString(shortcut)
+    }
+
+    private func saveShortcut(_ shortcut: ShortcutRecorder.Shortcut) {
+        if let data = try? NSKeyedArchiver.archivedData(
+            withRootObject: shortcut, requiringSecureCoding: true) {
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+        loadCurrentShortcut()
+    }
+
+    static func shortcutToString(_ shortcut: ShortcutRecorder.Shortcut) -> String {
+        var parts: [String] = []
+        let flags = shortcut.modifierFlags
+        if flags.contains(.control) { parts.append("⌃") }
+        if flags.contains(.option) { parts.append("⌥") }
+        if flags.contains(.shift) { parts.append("⇧") }
+        if flags.contains(.command) { parts.append("⌘") }
+        let key = shortcut.charactersIgnoringModifiers?.uppercased() ?? ""
+        if !key.isEmpty { parts.append(key) }
+        return parts.joined()
+    }
+
+    deinit { stopRecording() }
+}
+
+struct ShortcutRecorderView: View {
+    let defaultsKey: String
+    @StateObject private var state = ShortcutRecorderState()
 
     var body: some View {
-        Button(action: { isRecording.toggle() }) {
-            Text(isRecording ? "請按下新的快捷鍵…" : displayString)
+        Button(action: {
+            if state.isRecording { state.stopRecording() } else { state.startRecording() }
+        }) {
+            Text(state.isRecording ? "輸入快捷鍵…" : state.displayText)
                 .font(.system(size: 13, design: .monospaced))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
                 .frame(minWidth: 120)
-                .background(isRecording ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
-                .foregroundColor(isRecording ? .accentColor : .primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .contentShape(Rectangle())
+                .background(state.isRecording ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.1))
+                .foregroundColor(state.isRecording ? .accentColor : .primary)
                 .cornerRadius(6)
                 .overlay(
                     RoundedRectangle(cornerRadius: 6)
-                        .stroke(isRecording ? Color.accentColor : Color.clear, lineWidth: 1.5)
+                        .stroke(state.isRecording ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
-        .background(isRecording ? HotkeyListenerView(onKeyDown: onRecord) : nil)
-    }
-}
-
-/// 隱藏的 NSView 用來攔截鍵盤事件
-struct HotkeyListenerView: NSViewRepresentable {
-    var onKeyDown: (NSEvent) -> Void
-
-    func makeNSView(context: Context) -> HotkeyCapture {
-        let view = HotkeyCapture()
-        view.onKeyDown = onKeyDown
-        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
-        return view
-    }
-
-    func updateNSView(_ nsView: HotkeyCapture, context: Context) {
-        nsView.onKeyDown = onKeyDown
-    }
-}
-
-class HotkeyCapture: NSView {
-    var onKeyDown: ((NSEvent) -> Void)?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        // 需要至少一個 modifier key
-        if mods.contains(.command) || mods.contains(.control) || mods.contains(.option) {
-            onKeyDown?(event)
+        .onAppear {
+            state.defaultsKey = defaultsKey
+            state.loadCurrentShortcut()
         }
+        .onDisappear { state.stopRecording() }
     }
 }
 
@@ -825,12 +895,14 @@ struct PinnedTabView: View {
                         CardGridView(
                             items: viewModel.filteredPinnedItems,
                             selectedIndex: viewModel.pinnedSelectedIndex,
+                            scrollToSelection: $viewModel.scrollToSelection,
                             onSelect: { index in viewModel.selectIndex(index) },
                             onPaste: { index in viewModel.pastePinnedAtIndex(index, onDismiss: onDismiss) },
                             onTogglePin: { item in viewModel.togglePin(item: item) },
                             onDelete: { item in viewModel.deleteItem(item: item) },
                             categories: viewModel.categories,
-                            onSetCategory: { item, catId in viewModel.setCategory(item: item, categoryId: catId) }
+                            onSetCategory: { item, catId in viewModel.setCategory(item: item, categoryId: catId) },
+                            onColumnsChanged: { cols in viewModel.gridColumns = cols }
                         )
                         .frame(width: rightWidth * 0.55)
 
@@ -854,18 +926,20 @@ struct TabButton: View {
     let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 12))
-            Text(title).font(.system(size: 14))
+        Button(action: action) {
+            HStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 12))
+                Text(title).font(.system(size: 14))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .frame(minWidth: 60)
+            .contentShape(Rectangle())
+            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.01))
+            .foregroundColor(isSelected ? .accentColor : .secondary)
+            .cornerRadius(6)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 7)
-        .frame(minWidth: 60)
-        .contentShape(Rectangle())
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        .foregroundColor(isSelected ? .accentColor : .secondary)
-        .cornerRadius(6)
-        .onTapGesture { action() }
+        .buttonStyle(.plain)
     }
 }
 
@@ -877,29 +951,31 @@ struct CategoryRow: View {
     let action: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: icon)
-                .frame(width: 16)
-                .font(.system(size: 12))
-            Text(name)
-                .font(.system(size: 13))
-                .lineLimit(1)
-            Spacer()
-            Text("\(count)")
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.08))
-                .cornerRadius(8)
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .frame(width: 16)
+                    .font(.system(size: 12))
+                Text(name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                Spacer()
+                Text("\(count)")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.secondary.opacity(0.08))
+                    .cornerRadius(8)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
+            .cornerRadius(6)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.clear)
-        .cornerRadius(6)
-        .onTapGesture { action() }
+        .buttonStyle(.plain)
         .padding(.horizontal, 6)
     }
 }

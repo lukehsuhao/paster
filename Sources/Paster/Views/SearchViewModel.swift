@@ -21,6 +21,12 @@ final class SearchViewModel: ObservableObject {
     @Published var selectedItem: ClipItem? = nil
     @Published var totalCount: Int = 0
 
+    /// 鍵盤導航時為 true，滑鼠點擊不觸發捲動
+    @Published var scrollToSelection: Bool = false
+
+    /// Grid 欄數（由 View 回報）
+    var gridColumns: Int = 2
+
     // 篩選
     @Published var filterContentType: ClipContentType? = nil {
         didSet { performSearch() }
@@ -52,8 +58,6 @@ final class SearchViewModel: ObservableObject {
     @Published var detectSensitive: Bool = SettingsManager.shared.detectSensitive {
         didSet { SettingsManager.shared.detectSensitive = detectSensitive }
     }
-    @Published var hotkeyDisplay: String = SettingsManager.shared.hotkeyDisplayString
-    @Published var isRecordingHotkey: Bool = false
 
     private let db = DatabaseManager.shared
 
@@ -103,20 +107,44 @@ final class SearchViewModel: ObservableObject {
     }
 
     func moveUp() {
+        let cols = gridColumns
+        switch currentTab {
+        case .history: if selectedIndex >= cols { selectedIndex -= cols }
+        case .pinned: if pinnedSelectedIndex >= cols { pinnedSelectedIndex -= cols }
+        case .settings: break
+        }
+        scrollToSelection = true
+        updateSelectedItem()
+    }
+
+    func moveDown() {
+        let cols = gridColumns
+        switch currentTab {
+        case .history: if selectedIndex + cols < items.count { selectedIndex += cols }
+        case .pinned: if pinnedSelectedIndex + cols < filteredPinnedItems.count { pinnedSelectedIndex += cols }
+        case .settings: break
+        }
+        scrollToSelection = true
+        updateSelectedItem()
+    }
+
+    func moveLeft() {
         switch currentTab {
         case .history: if selectedIndex > 0 { selectedIndex -= 1 }
         case .pinned: if pinnedSelectedIndex > 0 { pinnedSelectedIndex -= 1 }
         case .settings: break
         }
+        scrollToSelection = true
         updateSelectedItem()
     }
 
-    func moveDown() {
+    func moveRight() {
         switch currentTab {
         case .history: if selectedIndex < items.count - 1 { selectedIndex += 1 }
         case .pinned: if pinnedSelectedIndex < filteredPinnedItems.count - 1 { pinnedSelectedIndex += 1 }
         case .settings: break
         }
+        scrollToSelection = true
         updateSelectedItem()
     }
 
@@ -132,16 +160,12 @@ final class SearchViewModel: ObservableObject {
 
     func pasteAtIndex(_ index: Int, onDismiss: () -> Void) {
         guard index < items.count else { return }
-        let item = items[index]
-        onDismiss()
-        PasteService.shared.pasteItem(item)
+        PasteService.shared.pasteItem(items[index])
     }
 
     func pastePinnedAtIndex(_ index: Int, onDismiss: () -> Void) {
         guard index < filteredPinnedItems.count else { return }
-        let item = filteredPinnedItems[index]
-        onDismiss()
-        PasteService.shared.pasteItem(item)
+        PasteService.shared.pasteItem(filteredPinnedItems[index])
     }
 
     // MARK: - Item Actions
@@ -189,20 +213,6 @@ final class SearchViewModel: ObservableObject {
     func pinnedCount(for cat: ClipCategory) -> Int {
         guard let id = cat.id else { return 0 }
         return db.pinnedCount(categoryId: id)
-    }
-
-    // MARK: - Hotkey Recording
-
-    func recordHotkey(event: NSEvent) {
-        let carbonMods = nsModifiersToCarbonModifiers(event.modifierFlags)
-        let keyCode = UInt32(event.keyCode)
-
-        // 必須有至少一個 modifier
-        guard carbonMods != 0 else { return }
-
-        SettingsManager.shared.setHotkey(keyCode: keyCode, modifiers: carbonMods)
-        hotkeyDisplay = SettingsManager.shared.hotkeyDisplayString
-        isRecordingHotkey = false
     }
 
     // MARK: - Filter helpers

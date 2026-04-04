@@ -8,8 +8,14 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
-# Build output (binary)
+# Build output
 Paster.app/Contents/MacOS/Paster
+Paster.app/Contents/Resources/ShortcutRecorder_ShortcutRecorder.bundle/
+Paster.app/Contents/_CodeSignature/
+Paster.app/Contents/CodeResources
+Paster-*.zip
+Paster-*.dmg
+paster-debug.log
 
 # Old Python version
 venv/
@@ -19,4 +25,4 @@ clipboard_history.py
 clipboard_history.db
 start.sh
 com.luke.clipboard-history.plist
-/ClipStash
+/Paster
